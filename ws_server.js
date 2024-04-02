@@ -11,6 +11,8 @@ const { WebSocketServer } = require('ws');
 
 const wss = new WebSocketServer({port: 4343});
 
+activeUser = []; //현재 방에 접속해 있는 유저
+
 //반드시 wss.clients.forEach를 사용해야 모든 사용자에게 다 send를 할 수 있음
 function broadcast(wss, data) {
     wss.clients.forEach(function each(client) {
@@ -18,22 +20,50 @@ function broadcast(wss, data) {
     });
 }
 
-activeUser = []; //현재 방에 접속해 있는 유저
+function datasplit(data) {
+    const res = data.split('::');
+    return (res); //[0] == data header,[1] == data 
+}
+
+function enterUser(name, wsocket) {
+    console.log(`${name} enter the room`); //debug
+    //색깔 랜덤으로 지정
+    const color = Math.floor(Math.random() * 16777215).toString(16);
+    const userData = name + '/' + color;
+    wsocket.userData = userData; //wsocket에 name 변수 추가
+    console.log(userData); //debug
+    activeUser.push(userData); 
+}
+
+function exitUser(username) {
+    const delidx = activeUser.indexOf(username);
+    if (delidx > -1)
+        activeUser.splice(delidx, 1); //splice()로 지운다.
+}
 
 wss.on("connection", wsocket => {
     console.log("someone joined websocket server");
     wsocket.isAlive = true;
-    wsocket.on("message", name => { //반드시 on의 이름을 message로 해야한다. (websocket 한정)
-        console.log(`${name} enter the room`);
-        wsocket.username = name; //wsocket에 변수 추가
-        activeUser.push(name); 
-        broadcast(wss, activeUser);
-        console.log(wss.clients.size); //debug
+    wsocket.on("message", data => { //반드시 on의 이름을 message로 해야한다. (websocket 한정)
+        const res = datasplit(data.toString());
+        const header = res[0];
+        const resData = res[1];
+        if (header == "enter") { //someone enter the room
+            enterUser(resData, wsocket);
+            broadcast(wss, activeUser);
+        }
+        else if (header == "draw") {
+            //그리기 요청 처리
+        }
+        else {
+            console.log("잘못된 요청입니다.");
+        }
     });
 
     wsocket.on('close', function() {
-        //여기에 퇴장 명단 작성
-        console.log("something close: ");
+        console.log("someone exit the room");
+        exitUser(wsocket.userData);
+        broadcast(wss, activeUser); //나갈 때도 명단 업데이트
     })
 })
 
